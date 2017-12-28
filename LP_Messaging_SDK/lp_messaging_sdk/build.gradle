@@ -27,9 +27,9 @@ dependencies {
     implementation 'com.android.support:recyclerview-v7:26.1.0'
     implementation 'com.android.support:percent:26.1.0'
 
-    implementation 'com.facebook.fresco:fresco:0.14.1'
-    implementation 'com.neovisionaries:nv-websocket-client:1.30'
-    implementation 'com.squareup.okhttp3:okhttp:3.4.1'
+    implementation 'com.facebook.fresco:fresco:1.5.0'
+    implementation 'com.neovisionaries:nv-websocket-client:1.31'
+    implementation 'com.squareup.okhttp3:okhttp:3.7.0'
 
     implementation(name: 'infra', ext: 'aar')
     implementation(name: 'messaging', ext: 'aar')
