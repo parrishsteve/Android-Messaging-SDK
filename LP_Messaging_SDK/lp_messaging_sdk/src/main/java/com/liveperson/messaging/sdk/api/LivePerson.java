@@ -12,8 +12,10 @@ import android.support.v4.app.Fragment;
 import android.text.TextUtils;
 
 import com.liveperson.api.LivePersonCallback;
+import com.liveperson.infra.ConversationViewParams;
 import com.liveperson.infra.ICallback;
 import com.liveperson.infra.InitLivePersonProperties;
+import com.liveperson.infra.LPAuthenticationParams;
 import com.liveperson.infra.LivePersonConfiguration;
 import com.liveperson.infra.callbacks.InitLivePersonCallBack;
 import com.liveperson.infra.callbacks.LogoutLivePersonCallBack;
@@ -101,15 +103,15 @@ public class LivePerson {
         LPMobileLog.setDebugMode(isDebuggable);
     }
 
-
     /**
      * Show the conversation screen
      *
      * @param activity
      * @return
      */
+    @Deprecated
     public static boolean showConversation(Activity activity) {
-        return showConversation(activity, null);
+        return showConversation(activity, new LPAuthenticationParams(), new ConversationViewParams(false));
     }
 
     /**
@@ -119,8 +121,16 @@ public class LivePerson {
      * @param authenticationKey
      * @return
      */
+    @Deprecated
     public static boolean showConversation(Activity activity, String authenticationKey) {
-        return isValidState() && MessagingUIFactory.getInstance().showConversation(activity, mBrandId, authenticationKey);
+        return showConversation(activity, new LPAuthenticationParams().setAuthKey(authenticationKey), new ConversationViewParams(false));
+    }
+
+    /**
+     * Show the conversation screen
+     */
+    public static boolean showConversation(Activity activity, LPAuthenticationParams lpAuthenticationParams, ConversationViewParams params‎) {
+        return isValidState() && MessagingUIFactory.getInstance().showConversation(activity, mBrandId, lpAuthenticationParams, params‎);
     }
 
     /**
@@ -138,9 +148,11 @@ public class LivePerson {
     /**
      * Get the conversation fragment only
      */
+    @Deprecated
     public static Fragment getConversationFragment() {
-        return getConversationFragment(null);
+        return getConversationFragment(new LPAuthenticationParams(), new ConversationViewParams(false));
     }
+
 
     /**
      * Get the conversation fragment only
@@ -148,12 +160,22 @@ public class LivePerson {
      * @param authKey
      * @return
      */
+    @Deprecated
     public static Fragment getConversationFragment(String authKey) {
+        return getConversationFragment(new LPAuthenticationParams().setAuthKey(authKey), new ConversationViewParams(false));
+    }
+
+    /**
+     * Get the conversation fragment only
+     *
+     * @return
+     */
+    public static Fragment getConversationFragment(LPAuthenticationParams lpAuthenticationParams, ConversationViewParams params‎) {
         if (!isValidState()) {
             LPMobileLog.e(TAG, "getConversationFragment- not initialized! mBrandId = " + mBrandId);
             return null;
         }
-        return MessagingUIFactory.getInstance().getConversationFragment(mBrandId, authKey);
+        return MessagingUIFactory.getInstance().getConversationFragment(mBrandId, lpAuthenticationParams, params‎);
     }
 
     /**
@@ -161,13 +183,28 @@ public class LivePerson {
      *
      * @param authKey the authentication key to connect with
      */
+    @Deprecated
     public static void reconnect(String authKey) {
 
         if (!isValidState()) {
             return;
         }
 
-        MessagingFactory.getInstance().getController().reconnect(mBrandId, authKey);
+        MessagingFactory.getInstance().getController().reconnect(mBrandId, new LPAuthenticationParams().setAuthKey(authKey));
+    }
+
+    /**
+     * Reconnect with new authentication key / JWT
+     *
+     * @param lpAuthenticationParams the authentication params to connect with
+     */
+    public static void reconnect(LPAuthenticationParams lpAuthenticationParams) {
+
+        if (!isValidState()) {
+            return;
+        }
+
+        MessagingFactory.getInstance().getController().reconnect(mBrandId, lpAuthenticationParams);
     }
 
     /**
@@ -221,7 +258,7 @@ public class LivePerson {
 
         PushMessage message = PushMessageParser.parseBundle(brandId, data);
 
-        if (message != null){
+        if (message != null) {
             NotificationController.instance.addMessageAndDisplayNotification(context, brandId, message, showNotification, R.drawable.liveperson_icon);
         }
     }
@@ -246,19 +283,40 @@ public class LivePerson {
         //Parse the bundle in case it's related to LivePerson messages
         PushMessage message = PushMessageParser.parse(brandId, remoteMessage);
 
-        if (message != null){
+        if (message != null) {
             NotificationController.instance.addMessageAndDisplayNotification(context, brandId, message, showNotification, R.drawable.liveperson_icon);
         }
 
         return message;
     }
 
+    /**
+     * @param brandId
+     * @return
+     * @deprecated
+     */
     public static int getNumUnreadMessages(String brandId) {
         if (TextUtils.isEmpty(brandId)) {
             LPMobileLog.e(TAG, "No Brand! returning -1");
             return -1;
         }
         return NotificationController.instance.getNumUnreadMessages(brandId);
+    }
+
+
+    /**
+     * Getting the number of unread messages
+     * Note: SDK needs to be initialized in order to call this API
+     *
+     * @param callback
+     * @return
+     */
+    public static void getNumUnreadMessages(String appId, final ICallback<Integer, Exception> callback) {
+        if (!isValidState()) {
+            callback.onError(new Exception("SDK not initialized"));
+        } else {
+            MessagingFactory.getInstance().getController().getUnreadMessagesCount(mBrandId, appId, callback);
+        }
     }
 
 
@@ -387,7 +445,14 @@ public class LivePerson {
     }
 
     private static boolean isValidState() {
-        return MessagingUIFactory.getInstance().isInitialized() && !TextUtils.isEmpty(mBrandId);
+
+        boolean initialized = MessagingUIFactory.getInstance().isInitialized();
+        boolean isEmpty = TextUtils.isEmpty(mBrandId);
+        if (initialized && isEmpty) {
+            mBrandId = MessagingUIFactory.getInstance().getMessagingUi().getInitData().getBrandId();
+        }
+        LPMobileLog.d(TAG, "init = " + initialized + " mBrandId = " + mBrandId);
+        return initialized && !TextUtils.isEmpty(mBrandId);
     }
 
     /**
@@ -488,39 +553,42 @@ public class LivePerson {
         });
     }
 
-	/**
-	 * Set a PendingIntent to be used on the image foreground service notification.
-	 * Note: the foreground service will be used only if the <i>upload_photo_using_service</i> configuration is set to true
-	 * @param pendingIntent
-	 */
-	public static void setImageServicePendingIntent(PendingIntent pendingIntent) {
-		if (pendingIntent != null) {
-			MessagingFactory.getInstance().getController().setImageServicePendingIntent(pendingIntent);
-		}
-	}
+    /**
+     * Set a PendingIntent to be used on the image foreground service notification.
+     * Note: the foreground service will be used only if the <i>upload_photo_using_service</i> configuration is set to true
+     *
+     * @param pendingIntent
+     */
+    public static void setImageServicePendingIntent(PendingIntent pendingIntent) {
+        if (pendingIntent != null) {
+            MessagingFactory.getInstance().getController().setImageServicePendingIntent(pendingIntent);
+        }
+    }
 
-	/**
-	 * Set a notification builder that represents the ongoing notification for the image upload foreground service. It is assumed that a pending intent
-	 * is added to the given notification builder.
-	 * Note: the foreground service will be used only if the <i>upload_photo_using_service</i> configuration is set to true
-	 * @param builder - the Notification.Builder for the ongoing notification
-	 */
-	public static void setImageServiceUploadNotificationBuilder(Notification.Builder builder) {
-		if (builder != null) {
-			MessagingFactory.getInstance().getController().setImageForegroundServiceUploadNotificationBuilder(builder);
-		}
-	}
+    /**
+     * Set a notification builder that represents the ongoing notification for the image upload foreground service. It is assumed that a pending intent
+     * is added to the given notification builder.
+     * Note: the foreground service will be used only if the <i>upload_photo_using_service</i> configuration is set to true
+     *
+     * @param builder - the Notification.Builder for the ongoing notification
+     */
+    public static void setImageServiceUploadNotificationBuilder(Notification.Builder builder) {
+        if (builder != null) {
+            MessagingFactory.getInstance().getController().setImageForegroundServiceUploadNotificationBuilder(builder);
+        }
+    }
 
-	/**
-	 * Set a notification builder that represents the ongoing notification for the image download foreground service. It is assumed that a pending intent
-	 * is added to the given notification builder.
-	 * Note: the foreground service will be used only if the <i>upload_photo_using_service</i> configuration is set to true
-	 * @param builder - the Notification.Builder for the ongoing notification
-	 */
-	public static void setImageServiceDownloadNotificationBuilder(Notification.Builder builder) {
-		if (builder != null) {
-			MessagingFactory.getInstance().getController().setImageForegroundServiceDownloadNotificationBuilder(builder);
-		}
-	}
+    /**
+     * Set a notification builder that represents the ongoing notification for the image download foreground service. It is assumed that a pending intent
+     * is added to the given notification builder.
+     * Note: the foreground service will be used only if the <i>upload_photo_using_service</i> configuration is set to true
+     *
+     * @param builder - the Notification.Builder for the ongoing notification
+     */
+    public static void setImageServiceDownloadNotificationBuilder(Notification.Builder builder) {
+        if (builder != null) {
+            MessagingFactory.getInstance().getController().setImageForegroundServiceDownloadNotificationBuilder(builder);
+        }
+    }
 
 }
